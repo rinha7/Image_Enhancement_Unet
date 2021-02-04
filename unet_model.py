@@ -1,128 +1,112 @@
 import tensorflow as tf
-import tensorflow.keras as keras
-import tensorflow.keras.backend as K
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Conv2D, Input, BatchNormalization, Concatenate, Conv2DTranspose, Lambda
-
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-
-def psnr(label, prediction):
-    label = tf.clip_by_value(0.5 * (label + 1.0), 0.0, 1.0)
-    prediction = tf.clip_by_value(0.5 * (prediction + 1.0), 0.0, 1.0)
-    psnr = tf.reduce_mean(tf.image.psnr(label, prediction, max_val=1.0))
-    return psnr
+from tensorflow import keras
 
 
-def ssim(label, prediction):
-    label = tf.clip_by_value(0.5 * (label + 1.0), 0.0, 1.0)
-    prediction = tf.clip_by_value(0.5 * (prediction + 1.0), 0.0, 1.0)
-    ssim = tf.reduce_mean(tf.image.ssim(label, prediction, max_val=1.0))
-    return ssim
+class Unet_Model(keras.Model):
+    def __init__(self):
+        super(Unet_Model,self).__init__()
+        # Encoder Part
+        self.conv1 = keras.layers.Conv2D(16, (5, 5), 1, 'same', kernel_initializer="he_normal")
+        self.act1 = keras.layers.Activation('selu')
+        self.batch1 = keras.layers.BatchNormalization(momentum=0.9)
 
-class DataGenerator(keras.utils.Sequence):
+        self.conv2 = keras.layers.Conv2D(32, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act2 = keras.layers.Activation('selu')
+        self.batch2 = keras.layers.BatchNormalization(momentum=0.9)
 
-    def __init__(self, path='data/Adobe5k/', batch_size=1, isTrain=True,
-                 img_dim=(512, 512, 3), shuffle=True):
-        self.batch_size = batch_size
-        self.isTrain = isTrain
-        self.img_dim = img_dim
-        self.shuffle = shuffle
-        if self.isTrain:
-            self.indexes = list(range(1, 4501))
+        self.conv3 = keras.layers.Conv2D(64, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act3 = keras.layers.Activation('selu')
+        self.batch3 = keras.layers.BatchNormalization(momentum=0.9)
 
-        else:
-            self.indexes = list(range(4501, 5001))
-        self.x_path = path + 'input/'
-        self.y_path = path + 'user-c/'
-        self.on_epoch_end()
+        self.conv4 = keras.layers.Conv2D(128, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act4 = keras.layers.Activation('selu')
+        self.batch4 = keras.layers.BatchNormalization(momentum=0.9)
 
-    def on_epoch_end(self):
-        if self.shuffle:
-            np.random.shuffle(self.indexes)
+        self.conv5 = keras.layers.Conv2D(256, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act5 = keras.layers.Activation('selu')
+        self.batch5 = keras.layers.BatchNormalization(momentum=0.9)
 
-    def read_image(self, path, img_idx):
-        img = tf.io.decode_image(tf.io.read_file(path + img_idx + '.jpg'))
-        img = tf.image.convert_image_dtype(img, dtype='float32')
-        img = 2.0 * img - 1.0
-        img = tf.image.resize(img, [self.img_dim[0], self.img_dim[1]], method='bilinear')
-        return img
+        self.conv6 = keras.layers.Conv2D(512, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act6 = keras.layers.Activation('selu')
+        self.batch6 = keras.layers.BatchNormalization(momentum=0.9)
 
-    def __getitem__(self, index):
-        index = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
-        x = np.empty((self.batch_size, *self.img_dim))
-        y = np.empty((self.batch_size, *self.img_dim))
+        # Decoder Part
+        self.deconv1 = keras.layers.Conv2DTranspose(256, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act7 = keras.layers.Activation('selu')
+        self.batch7 = keras.layers.BatchNormalization(momentum=0.9)
 
-        for batch_idx, img_idx in enumerate(index):
-            x[batch_idx] = self.read_image(self.x_path, str(img_idx).zfill(4))
-            y[batch_idx] = self.read_image(self.y_path, str(img_idx).zfill(4))
+        self.deconv2 = keras.layers.Conv2DTranspose(128, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act8 = keras.layers.Activation('selu')
+        self.batch8 = keras.layers.BatchNormalization(momentum=0.9)
 
-        return x, y
+        self.deconv3 = keras.layers.Conv2DTranspose(64, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act9 = keras.layers.Activation('selu')
+        self.batch9 = keras.layers.BatchNormalization(momentum=0.9)
 
-    def __len__(self):
-        return int(np.floor(len(self.indexes) / self.batch_size))
+        self.deconv4 = keras.layers.Conv2DTranspose(32, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act10 = keras.layers.Activation('selu')
+        self.batch10 = keras.layers.BatchNormalization(momentum=0.9)
 
+        self.deconv5 = keras.layers.Conv2DTranspose(16, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act11 = keras.layers.Activation('selu')
+        self.batch11 = keras.layers.BatchNormalization(momentum=0.9)
 
-def Unet_Residual():
-    input_shape = (512, 512, 3,)
-    input_layer = Input(shape=input_shape)
+        self.deconv6 = keras.layers.Conv2D(16, (5, 5), 2, 'same', kernel_initializer="he_normal")
+        self.act12 = keras.layers.Activation('selu')
+        self.batch12 = keras.layers.BatchNormalization(momentum=0.9)
 
-    # Encoding
-    # 512 * 512 * 3
-    conv1 = Conv2D(16, kernel_size=(5, 5), strides=1, padding='same', activation='selu')(input_layer)
-    batch1 = BatchNormalization(momentum=0.9)(conv1)
-    # 512 * 512 * 16
-    conv2 = Conv2D(32, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch1)
-    batch2 = BatchNormalization(momentum=0.9)(conv2)
-    # 256 * 256 * 32
-    conv3 = Conv2D(64, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch2)
-    batch3 = BatchNormalization(momentum=0.9)(conv3)
-    # 128 * 128 * 64
-    conv4 = Conv2D(128, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch3)
-    batch4 = BatchNormalization(momentum=0.9)(conv4)
-    # 64 * 64 * 128
-    conv5 = Conv2D(256, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch4)
-    batch5 = BatchNormalization(momentum=0.9)(conv5)
-    # 32 * 32 * 256
-    conv6 = Conv2D(512, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch5)
-    batch6 = BatchNormalization(momentum=0.9)(conv6)
-    # 16 * 16 * 512
+        self.f_conv = keras.layers.Conv2D(3, kernel_size=(5, 5), strides=1, padding='same', activation='tanh')
 
-    # Decoding
-    conv7 = Conv2DTranspose(256, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(batch6)
-    batch7 = BatchNormalization(momentum=0.9)(conv7)
-    concat7 = Concatenate()([batch5, batch7])
-    # 32 * 32 * 512
-    conv8 = Conv2DTranspose(128, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(concat7)
-    batch8 = BatchNormalization(momentum=0.9)(conv8)
-    concat8 = Concatenate()([batch4, batch8])
-    # 64 * 64 * 256
-    conv9 = Conv2DTranspose(64, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(concat8)
-    batch9 = BatchNormalization(momentum=0.9)(conv9)
-    concat9 = Concatenate()([batch3, batch9])
-    # 128 * 128 * 128
-    conv10 = Conv2DTranspose(32, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(concat9)
-    batch10 = BatchNormalization(momentum=0.9)(conv10)
-    concat10 = Concatenate()([batch2, batch10])
-    # 256 * 256 * 64
-    conv11 = Conv2DTranspose(16, kernel_size=(5, 5), strides=2, padding='same', activation='selu')(concat10)
-    batch11 = BatchNormalization(momentum=0.9)(conv11)
-    concat11 = Concatenate()([batch1, batch11])
-    # 512 * 512 * 32
-    conv12 = Conv2D(16, kernel_size=(5, 5), strides=1, padding='same', activation='selu')(concat11)
-    batch12 = BatchNormalization(momentum=0.9)(conv12)
-    # 512 * 512 * 16
+    def call(self, inputs, training=False, mask=None):
+        x = self.conv1(inputs)
+        x = self.act1(x)
+        batch1 = self.batch1(x)
 
+        x = self.conv2(batch1)
+        x = self.act2(x)
+        batch2 = self.batch2(x)
 
-    # Residual Block
-    conv13 = Conv2D(3, (5,5),1,'same',activation='selu')(batch12)
-    residual = Lambda(lambda  tensors : tf.add(tensors[0],tensors[1]), output_shape=(512,512,3))([input_layer, conv13])
-    outputs = Conv2D(3, kernel_size=(5, 5), strides=1, padding='same', activation='tanh')(residual)
+        x = self.conv3(batch2)
+        x = self.act3(x)
+        batch3 = self.batch3(x)
 
+        x = self.conv4(batch3)
+        x = self.act4(x)
+        batch4 = self.batch4(x)
 
+        x = self.conv5(batch4)
+        x = self.act5(x)
+        batch5 = self.batch5(x)
 
-    model = Model(inputs=input_layer, outputs=outputs)
+        x = self.conv6(batch5)
+        x = self.act6(x)
+        batch6 = self.batch6(x)
 
-    return model
+        x = self.deconv1(batch6)
+        x = self.act7(x)
+        batch7 = self.batch7(x)
+        cat1 = tf.concat([batch5, batch7],axis=-1)
+
+        x = self.deconv2(cat1)
+        x = self.act8(x)
+        batch8 = self.batch8(x)
+        cat2 = tf.concat([batch4, batch8],axis=-1)
+
+        x = self.deconv3(cat2)
+        x = self.act9(x)
+        batch9 = self.batch9(x)
+        cat3 = tf.concat([batch3, batch9],axis=-1)
+
+        x = self.deconv4(cat3)
+        x = self.act10(x)
+        batch10 = self.batch10(x)
+        cat4 = tf.concat([batch2, batch10],axis=-1)
+
+        x = self.deconv5(cat4)
+        x = self.act11(x)
+        batch11 = self.batch11(x)
+        cat5 = tf.concat([batch1, batch11],axis=-1)
+
+        output = self.f_conv(cat5)
+
+        return output
