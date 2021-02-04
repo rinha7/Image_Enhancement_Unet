@@ -6,6 +6,8 @@ from load_dataset import *
 from unet_model import *
 
 def main():
+    # ./data/Adobe5k/input <- noise file
+    # ./data/Adobe5k/label <- label file
     train_datagen = DataGenerator(batch_size=1,isTrain=True)
     test_datagen = DataGenerator(isTrain=False)
 

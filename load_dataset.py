@@ -15,7 +15,7 @@ class DataGenerator(keras.utils.Sequence):
         else:
             self.indexes = list(range(4501, 5001))
         self.x_path = path + 'input/'
-        self.y_path = path + 'user-c/'
+        self.y_path = path + 'label/'
         self.on_epoch_end()
 
     def on_epoch_end(self):
